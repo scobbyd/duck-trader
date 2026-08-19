@@ -15,6 +15,8 @@ input_boolean:
 input_number:
   duck_trader_deadband_kwh:
     name: Duck Trader re-solve deadband
+    # measured on the reference site: 4 kWh keeps the insurance value
+    # with the fewest re-solves; tighter deadbands only add churn
     min: 0.5
     max: 8
     step: 0.5
@@ -93,7 +95,7 @@ automation:
         value_template: >
           {{ (states('sensor.battery_soc_kwh') | float(0)
               - states('sensor.duck_trader_planned_soc') | float(0)) | abs
-             > states('input_number.duck_trader_deadband_kwh') | float(2) }}
+             > states('input_number.duck_trader_deadband_kwh') | float(4) }}
     action:
       - action: shell_command.duck_trader_solve
 

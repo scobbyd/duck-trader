@@ -32,27 +32,95 @@ def _pv_use(m_ac, a_ac, load, c, d, s):
     return min(m_ac, max(0.0, load + c - d - a_ac), port)
 
 
+def _step(row, c_plan, d_plan, p, soc, eta, dt):
+    """One executor step: the reactive guards + SOC clipping. Shared by the
+    plain and re-solving execution paths (the guards stay active under
+    re-solving as the sub-check-interval safety net)."""
+    s, load = row["sell"], row["load"]
+    m_ac, a_ac = row["pv_pot"] * PV_AC, row["aux"] * PV_AC
+    c, d = float(c_plan), float(d_plan)
+    if s <= 0:
+        d = 0.0
+        surplus = max(0.0, m_ac + a_ac - load)
+        c = max(c, min(p.p_kw, surplus))
+    c = max(0.0, min(c, p.p_kw, (p.soc_max - soc) / (eta * dt)))
+    d = max(0.0, min(d, p.p_kw, (soc - p.soc_min) * eta / dt))
+    u = _pv_use(m_ac, a_ac, load, c, d, s)
+    grid = load + c - d - u - a_ac
+    soc = soc + (eta * c - d / eta) * dt
+    return c, d, u, max(grid, 0.0), max(-grid, 0.0), soc
+
+
 def execute_hours(mslice, planned, p, soc0, dt=1.0):
     eta = np.sqrt(p.rt)
     soc = soc0
     out = {k: [] for k in ("c", "d", "u", "imp", "exp", "soc")}
     for i, (ts, row) in enumerate(mslice.iterrows()):
-        s, load = row["sell"], row["load"]
-        m_ac, a_ac = row["pv_pot"] * PV_AC, row["aux"] * PV_AC
-        c, d = float(planned["c"][i]), float(planned["d"][i])
-        if s <= 0:
-            d = 0.0
-            surplus = max(0.0, m_ac + a_ac - load)
-            c = max(c, min(p.p_kw, surplus))
-        c = max(0.0, min(c, p.p_kw, (p.soc_max - soc) / (eta * dt)))
-        d = max(0.0, min(d, p.p_kw, (soc - p.soc_min) * eta / dt))
-        u = _pv_use(m_ac, a_ac, load, c, d, s)
-        grid = load + c - d - u - a_ac
-        soc = soc + (eta * c - d / eta) * dt
+        c, d, u, imp, exp_, soc = _step(row, planned["c"][i], planned["d"][i],
+                                        p, soc, eta, dt)
         out["c"].append(c), out["d"].append(d), out["u"].append(u)
-        out["imp"].append(max(grid, 0.0)), out["exp"].append(max(-grid, 0.0))
+        out["imp"].append(imp), out["exp"].append(exp_)
         out["soc"].append(soc)
     return {k: np.array(v) for k, v in out.items()} | {"soc_end": soc}
+
+
+def _check_steps(resolve_check, freq):
+    """Check interval -> whole steps of the planning grid (min 1)."""
+    if resolve_check is None:
+        return None
+    if isinstance(resolve_check, (int, np.integer)):
+        return max(1, int(resolve_check))
+    return max(1, round(pd.Timedelta(resolve_check) / pd.Timedelta(freq)))
+
+
+def _execute_resolve(msl, plan, p, soc0, lam, dt, check_steps, deadband,
+                     sell, buy, lf, pv_main, aux_fc, pv_update, allow=True):
+    """Stepwise execution with intraday re-solves. At each check boundary
+    the actual SOC is compared with the active plan's expected SOC for the
+    step just completed; a drift beyond `deadband` kWh re-solves the MILP
+    from the current step to the end of the day's original horizon with
+    soc0 = actual SOC, the same stored forecasts and the same published
+    prices (strictly causal). With pv_update the remaining PV forecast is
+    rescaled by today's realized/forecast cumsum ratio (clamped 0,3..3,0;
+    applied only once the forecast cumsum exceeds 2 kWh so night hours
+    cannot produce garbage ratios)."""
+    eta = np.sqrt(p.rt)
+    plan_c = np.asarray(plan["c"], dtype=float).copy()
+    plan_d = np.asarray(plan["d"], dtype=float).copy()
+    plan_soc = soc0 + np.cumsum((eta * plan_c - plan_d / eta) * dt)
+    act_pv = (msl["pv_pot"].values + msl["aux"].values) * PV_AC
+    fc_pv_tot = np.asarray(pv_main, dtype=float) + np.asarray(aux_fc,
+                                                              dtype=float)
+    out = {k: [] for k in ("c", "d", "u", "imp", "exp", "soc")}
+    soc = soc0
+    n_res = n_res_fail = 0
+    for i, (ts, row) in enumerate(msl.iterrows()):
+        if (allow and i > 0 and i % check_steps == 0
+                and abs(soc - plan_soc[i - 1]) > deadband):
+            pv_i, aux_i = pv_main[i:], aux_fc[i:]
+            if pv_update:
+                cf = float(fc_pv_tot[:i].sum()) * dt
+                if cf > 2.0:
+                    ratio = min(3.0, max(
+                        0.3, float(act_pv[:i].sum()) * dt / cf))
+                    pv_i, aux_i = pv_i * ratio, aux_i * ratio
+            r2 = opt.plan(sell[i:], buy[i:], lf[i:], pv_i, aux_i,
+                          soc, p, lam, dt=dt)
+            if r2["ok"]:
+                n_res += 1
+                plan_c[i:] = r2["c"]
+                plan_d[i:] = r2["d"]
+                plan_soc[i:] = soc + np.cumsum(
+                    (eta * r2["c"] - r2["d"] / eta) * dt)
+            else:
+                n_res_fail += 1
+        c, d, u, imp, exp_, soc = _step(row, plan_c[i], plan_d[i],
+                                        p, soc, eta, dt)
+        out["c"].append(c), out["d"].append(d), out["u"].append(u)
+        out["imp"].append(imp), out["exp"].append(exp_)
+        out["soc"].append(soc)
+    ex = {k: np.array(v) for k, v in out.items()} | {"soc_end": soc}
+    return ex, plan_c[:len(msl)], plan_d[:len(msl)], n_res, n_res_fail
 
 
 def _frame(mslice, ex):
@@ -129,17 +197,33 @@ def default_lam_end(master, p, t0):
 
 
 def run_planned(master, p, fc_load, fc_pv, days=None, lam_end_fn=None,
-                min_profit_eur=0.0, dt=1.0, freq="1h"):
+                min_profit_eur=0.0, dt=1.0, freq="1h",
+                resolve_check=None, resolve_deadband_kwh=1.0,
+                resolve_pv_update=False):
     """B2 (causal forecasts) / B3 (actuals as forecasts) rolling backtest.
 
     min_profit_eur: optional post-hoc gate — if the plan's expected
-    improvement over a no-trade plan is below this, execute no-trade."""
+    improvement over a no-trade plan is below this, execute no-trade.
+
+    Intraday re-solving (default off, behavior then unchanged): with
+    resolve_check set (a Timedelta string like "30min" or a step count),
+    the day executes stepwise and at each check boundary actual SOC is
+    compared with the active plan's expectation; drift beyond
+    resolve_deadband_kwh re-solves from the current step to the end of
+    the day's original horizon (same information set: published prices,
+    stored forecasts, soc0 = actual). resolve_pv_update additionally
+    rescales the remaining PV forecast by today's realized/forecast
+    ratio. plan_c/plan_d columns reflect the plan ACTIVE at each executed
+    step. n_resolves (total) is exposed in the result dict and per day
+    in plan_meta. A day gated to no-trade by min_profit_eur is not
+    re-solved (the gate decided the day should not trade)."""
     days = list(days) if days is not None else list(sched.plan_days())
     master = _with_fee(master, p)
     lam_end_fn = lam_end_fn or default_lam_end
+    check_steps = _check_steps(resolve_check, freq)
     soc = p.soc_min
     parts, plans = [], []
-    n_fail = 0
+    n_fail = n_resolves = n_resolve_fail = 0
     for day in days:
         t0, hz, exec_end = sched.plan_horizon(day, freq=freq)
         hz = hz[np.isin(hz, master.index)]
@@ -149,6 +233,7 @@ def run_planned(master, p, fc_load, fc_pv, days=None, lam_end_fn=None,
         pv_main_ac, aux_ac = fc_pv(t0, hz)   # AC-side, as opt expects
         lam = lam_end_fn(master, p, t0)
         r = opt.plan(sell, buy, lf, pv_main_ac, aux_ac, soc, p, lam, dt=dt)
+        gated = False
         if not r["ok"]:
             n_fail += 1
             r = {"c": np.zeros(len(hz)), "d": np.zeros(len(hz))}
@@ -156,19 +241,31 @@ def run_planned(master, p, fc_load, fc_pv, days=None, lam_end_fn=None,
             base = opt.plan(sell, buy, lf, pv_main_ac, aux_ac, soc, p, lam,
                             no_trade=True, dt=dt)
             if r["objective"] - base["objective"] < min_profit_eur:
-                r = base
+                r, gated = base, True
         sl = hz[hz < exec_end]
         msl = master.loc[sl]
-        ex = execute_hours(msl, {"c": r["c"][:len(sl)], "d": r["d"][:len(sl)]},
-                           p, soc, dt=dt)
+        day_res = 0
+        if check_steps is None:
+            ex = execute_hours(msl, {"c": r["c"][:len(sl)],
+                                     "d": r["d"][:len(sl)]}, p, soc, dt=dt)
+            rec_c, rec_d = r["c"][:len(sl)], r["d"][:len(sl)]
+        else:
+            ex, rec_c, rec_d, day_res, day_res_fail = _execute_resolve(
+                msl, r, p, soc, lam, dt, check_steps, resolve_deadband_kwh,
+                sell, buy, lf, pv_main_ac, aux_ac, resolve_pv_update,
+                allow=not gated)
+            n_resolves += day_res
+            n_resolve_fail += day_res_fail
         soc = ex["soc_end"]
         h = _frame(msl, ex)
-        h["plan_c"] = r["c"][:len(sl)]
-        h["plan_d"] = r["d"][:len(sl)]
+        h["plan_c"] = rec_c
+        h["plan_d"] = rec_d
         parts.append(h)
-        plans.append({"day": str(day), "lam_end": lam})
+        plans.append({"day": str(day), "lam_end": lam,
+                      "n_resolves": day_res})
     h = pd.concat(parts)
-    out = {"hours": h, "n_fail": n_fail} | _totals(h, p, dt)
+    out = {"hours": h, "n_fail": n_fail, "n_resolves": n_resolves,
+           "n_resolve_fail": n_resolve_fail} | _totals(h, p, dt)
     out["plan_meta"] = plans
     return out
 

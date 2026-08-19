@@ -81,12 +81,14 @@ is a fresh solve from current state, so the same script serves both the
 - the daily-solve automation at 13:05;
 - the re-solve loop: every 30 minutes, compare actual SOC against the
   plan's expected SOC and call the solver again only when the gap
-  exceeds an `input_number` deadband. This is what keeps the plan honest
-  through PV forecast misses and unplanned loads without churning the
-  inverter: within the deadband the executor guards absorb the
-  difference, beyond it the whole remaining horizon gets re-optimized
-  (the solve is sub-second, so the cost of re-solving is register
-  writes, not compute);
+  exceeds an `input_number` deadband. Manage expectations here: on the
+  reference site this loop was backtested (`run_planned` supports it
+  via `resolve_check`/`resolve_deadband_kwh`) and added almost nothing,
+  because the daily plan plus the guards already absorb divergence, and
+  aggressive re-solving on a fine grid can even churn slightly. Treat
+  it as insurance against large unforecast events (an unplanned 10 kWh
+  load, a storm day), not as a profit source: a wide deadband of about
+  4 kWh and no PV rescaling measured best;
 - the executor skeleton (per-step setpoints to your inverter: this part
   is hardware-specific and deliberately ships writing nothing but a
   notification until you map it) and the negative-price export guard.

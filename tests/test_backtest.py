@@ -110,6 +110,61 @@ def test_planned_scenario_reconciles():
     assert h.d[local[np.isin(m.index, h.index)].hour >= 18].sum() > 5.0
 
 
+def test_resolve_zero_divergence_identical():
+    """Feature on but never triggered: forecast == actual and all-positive
+    prices (no guard interference) must give zero re-solves and a
+    bit-identical hourly frame vs the non-resolve path."""
+    m = synth_master(pv_kw=6.0)
+    local = m.index.tz_convert("Europe/Amsterdam")
+    da = np.where(local.hour < 7, 25.0, np.where(local.hour >= 18, 250.0, 90.0))
+    m["da_eur_mwh"] = da
+    p = P()
+    kw = dict(
+        fc_load=lambda t0, hz: m["load"].reindex(hz).values,
+        fc_pv=lambda t0, hz: (m["pv_pot"].reindex(hz).values * PV_AC,
+                              m["aux"].reindex(hz).values * PV_AC),
+        days=DAYS)
+    r0 = backtest.run_planned(m, p, **kw)
+    r1 = backtest.run_planned(m, p, **kw, resolve_check="30min",
+                              resolve_deadband_kwh=1.0)
+    assert "n_resolves" in r0 and r0["n_resolves"] == 0
+    assert r1["n_resolves"] == 0
+    assert r1["cash_gross"] == r0["cash_gross"]
+    pd.testing.assert_frame_equal(r1["hours"], r0["hours"])
+
+
+def test_resolve_triggers_on_pv_underforecast_and_gains():
+    """A large unforecast midday PV burst at sell <= 0 gets soaked by the
+    executor guard; only a re-solve can then schedule the evening discharge
+    of that energy (the fixed plan never planned it). Direction is
+    hand-checkable: grid-charge at 0,04 to sell at 0,05 is unprofitable
+    (cost ~0,054/kWh out), so the base plan trades only its ~1,5 kWh of
+    peak load; the soaked ~27 kWh is free and worth ~0,036/kWh discharged."""
+    m = synth_master(da=20.0)              # sell = 0,00: soak guard armed
+    local = m.index.tz_convert("Europe/Amsterdam")
+    day = pd.Timestamp("2025-08-15").date()
+    on_day = local.date == day
+    m.loc[on_day & np.isin(local.hour, [13, 14, 15]), "pv_pot"] = 10.0
+    m.loc[on_day & np.isin(local.hour, [18, 19, 20]), "da_eur_mwh"] = 70.0
+    p = P()
+    kw = dict(
+        fc_load=lambda t0, hz: m["load"].reindex(hz).values,
+        fc_pv=lambda t0, hz: (np.zeros(len(hz)), np.zeros(len(hz))),
+        days=[day])
+    r0 = backtest.run_planned(m, p, **kw)
+    r1 = backtest.run_planned(m, p, **kw, resolve_check="30min",
+                              resolve_deadband_kwh=2.0)
+    assert r1["n_resolves"] >= 1
+    pk_1 = r1["hours"].sell > 0.02
+    pk_0 = r0["hours"].sell > 0.02
+    assert r1["hours"].d[pk_1].sum() > 5.0, "re-solve did not discharge soak"
+    assert r0["hours"].d[pk_0].sum() < 2.0, "base plan should only serve load"
+    assert r1["cash_gross"] > r0["cash_gross"] + 0.5
+    assert r1["cash_net"] > r0["cash_net"]
+    # plan columns reflect the re-solved (active) plan, not the 13:00 one
+    assert r1["hours"].plan_d[pk_1].sum() > 5.0
+
+
 def test_executor_and_totals_at_quarter_dt():
     m = synth_master()
     # quarter-hourly frame: repeat each hour 4x on a 15-min index
