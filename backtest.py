@@ -32,7 +32,7 @@ def _pv_use(m_ac, a_ac, load, c, d, s):
     return min(m_ac, max(0.0, load + c - d - a_ac), port)
 
 
-def execute_hours(mslice, planned, p, soc0):
+def execute_hours(mslice, planned, p, soc0, dt=1.0):
     eta = np.sqrt(p.rt)
     soc = soc0
     out = {k: [] for k in ("c", "d", "u", "imp", "exp", "soc")}
@@ -44,11 +44,11 @@ def execute_hours(mslice, planned, p, soc0):
             d = 0.0
             surplus = max(0.0, m_ac + a_ac - load)
             c = max(c, min(p.p_kw, surplus))
-        c = max(0.0, min(c, p.p_kw, (p.soc_max - soc) / eta))
-        d = max(0.0, min(d, p.p_kw, (soc - p.soc_min) * eta))
+        c = max(0.0, min(c, p.p_kw, (p.soc_max - soc) / (eta * dt)))
+        d = max(0.0, min(d, p.p_kw, (soc - p.soc_min) * eta / dt))
         u = _pv_use(m_ac, a_ac, load, c, d, s)
         grid = load + c - d - u - a_ac
-        soc = soc + eta * c - d / eta
+        soc = soc + (eta * c - d / eta) * dt
         out["c"].append(c), out["d"].append(d), out["u"].append(u)
         out["imp"].append(max(grid, 0.0)), out["exp"].append(max(-grid, 0.0))
         out["soc"].append(soc)
@@ -66,25 +66,25 @@ def _frame(mslice, ex):
     }, index=mslice.index)
 
 
-def _totals(h, p):
+def _totals(h, p, dt=1.0):
     eta = np.sqrt(p.rt)
-    cash_gross = float((h.sell * h.exp - h.buy * h.imp).sum())
-    deg = float(h.d.sum()) / eta * p.c_deg
+    cash_gross = float((h.sell * h.exp - h.buy * h.imp).sum()) * dt
+    deg = float(h.d.sum()) * dt / eta * p.c_deg
     neg = h.sell <= 0
     # split absorption at non-positive prices: PV-surplus-covered charge
     # (rescued solar) vs deliberate paid grid-charging
     surplus = (h.pot_ac + h.aux_ac - h.load).clip(lower=0.0)
-    soak_pv = float(np.minimum(h.c[neg], surplus[neg]).sum())
+    soak_pv = float(np.minimum(h.c[neg], surplus[neg]).sum()) * dt
     return {
         "cash_gross": cash_gross,
         "deg_cost": deg,
         "cash_net": cash_gross - deg,
-        "kwh_imp": float(h.imp.sum()), "kwh_exp": float(h.exp.sum()),
-        "kwh_curtailed": float((h.pot_ac - h.u).sum()),
-        "kwh_soaked_neg": float(h.c[neg].sum()),
+        "kwh_imp": float(h.imp.sum()) * dt, "kwh_exp": float(h.exp.sum()) * dt,
+        "kwh_curtailed": float((h.pot_ac - h.u).sum()) * dt,
+        "kwh_soaked_neg": float(h.c[neg].sum()) * dt,
         "kwh_soak_pv": soak_pv,
-        "kwh_gridcharge_neg": float(h.c[neg].sum()) - soak_pv,
-        "efc": float(h.d.sum()) / eta / p.cap,
+        "kwh_gridcharge_neg": float(h.c[neg].sum()) * dt - soak_pv,
+        "efc": float(h.d.sum()) * dt / eta / p.cap,
     }
 
 
@@ -94,7 +94,7 @@ def _exec_window(master, days):
     return master.loc[(master.index >= t0) & (master.index < end)]
 
 
-def run_rule_based(master, p, battery, days=None):
+def run_rule_based(master, p, battery, days=None, dt=1.0):
     """B0 (battery=False) and B1 greedy self-consumption (battery=True)."""
     days = list(days) if days is not None else list(sched.plan_days())
     master = _with_fee(master, p)
@@ -108,17 +108,17 @@ def run_rule_based(master, p, battery, days=None):
         surplus = m_ac + a_ac - load
         c = d = 0.0
         if battery and surplus > 0:
-            c = max(0.0, min(p.p_kw, surplus, (p.soc_max - soc) / eta))
+            c = max(0.0, min(p.p_kw, surplus, (p.soc_max - soc) / (eta * dt)))
         elif battery and surplus < 0:
-            d = max(0.0, min(p.p_kw, -surplus, (soc - p.soc_min) * eta))
+            d = max(0.0, min(p.p_kw, -surplus, (soc - p.soc_min) * eta / dt))
         u = _pv_use(m_ac, a_ac, load, c, d, s)
         grid = load + c - d - u - a_ac
-        soc = soc + eta * c - d / eta
+        soc = soc + (eta * c - d / eta) * dt
         ex["c"].append(c), ex["d"].append(d), ex["u"].append(u)
         ex["imp"].append(max(grid, 0.0)), ex["exp"].append(max(-grid, 0.0))
         ex["soc"].append(soc)
     h = _frame(w, {k: np.array(v) for k, v in ex.items()})
-    return {"hours": h} | _totals(h, p)
+    return {"hours": h} | _totals(h, p, dt)
 
 
 def default_lam_end(master, p, t0):
@@ -129,7 +129,7 @@ def default_lam_end(master, p, t0):
 
 
 def run_planned(master, p, fc_load, fc_pv, days=None, lam_end_fn=None,
-                min_profit_eur=0.0):
+                min_profit_eur=0.0, dt=1.0, freq="1h"):
     """B2 (causal forecasts) / B3 (actuals as forecasts) rolling backtest.
 
     min_profit_eur: optional post-hoc gate — if the plan's expected
@@ -141,26 +141,26 @@ def run_planned(master, p, fc_load, fc_pv, days=None, lam_end_fn=None,
     parts, plans = [], []
     n_fail = 0
     for day in days:
-        t0, hz, exec_end = sched.plan_horizon(day)
+        t0, hz, exec_end = sched.plan_horizon(day, freq=freq)
         hz = hz[np.isin(hz, master.index)]
         sell = master.loc[hz, "sell"].values
         buy = master.loc[hz, "buy"].values
         lf = fc_load(t0, hz)
         pv_main_ac, aux_ac = fc_pv(t0, hz)   # AC-side, as opt expects
         lam = lam_end_fn(master, p, t0)
-        r = opt.plan(sell, buy, lf, pv_main_ac, aux_ac, soc, p, lam)
+        r = opt.plan(sell, buy, lf, pv_main_ac, aux_ac, soc, p, lam, dt=dt)
         if not r["ok"]:
             n_fail += 1
             r = {"c": np.zeros(len(hz)), "d": np.zeros(len(hz))}
         if min_profit_eur > 0.0 and r.get("ok"):
             base = opt.plan(sell, buy, lf, pv_main_ac, aux_ac, soc, p, lam,
-                            no_trade=True)
+                            no_trade=True, dt=dt)
             if r["objective"] - base["objective"] < min_profit_eur:
                 r = base
         sl = hz[hz < exec_end]
         msl = master.loc[sl]
         ex = execute_hours(msl, {"c": r["c"][:len(sl)], "d": r["d"][:len(sl)]},
-                           p, soc)
+                           p, soc, dt=dt)
         soc = ex["soc_end"]
         h = _frame(msl, ex)
         h["plan_c"] = r["c"][:len(sl)]
@@ -168,19 +168,19 @@ def run_planned(master, p, fc_load, fc_pv, days=None, lam_end_fn=None,
         parts.append(h)
         plans.append({"day": str(day), "lam_end": lam})
     h = pd.concat(parts)
-    out = {"hours": h, "n_fail": n_fail} | _totals(h, p)
+    out = {"hours": h, "n_fail": n_fail} | _totals(h, p, dt)
     out["plan_meta"] = plans
     return out
 
 
-def monthly(h, p):
+def monthly(h, p, dt=1.0):
     eta = np.sqrt(p.rt)
-    g = h.assign(cash=h.sell * h.exp - h.buy * h.imp,
-                 deg=h.d / eta * p.c_deg)
+    g = h.assign(cash=(h.sell * h.exp - h.buy * h.imp) * dt,
+                 deg=h.d * dt / eta * p.c_deg)
     m = g.groupby(g.index.tz_convert(TZ).strftime("%Y-%m"))
     return pd.DataFrame({
         "cash_gross": m.cash.sum(), "deg": m.deg.sum(),
         "cash_net": m.cash.sum() - m.deg.sum(),
-        "imp": m.imp.sum(), "exp": m["exp"].sum(),
-        "efc": m.d.sum() / eta / p.cap,
+        "imp": m.imp.sum() * dt, "exp": m["exp"].sum() * dt,
+        "efc": m.d.sum() * dt / eta / p.cap,
     }).round(2)

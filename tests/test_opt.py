@@ -160,3 +160,33 @@ def test_relax_matches_milp_on_clean_day():
     r_mi, _ = run(sell, buy)
     assert r_lp["objective"] == pytest.approx(r_mi["objective"], abs=1e-4)
     assert np.minimum(r_lp["c"], r_lp["d"]).max() < 1e-6
+
+
+def test_dt_quarter_matches_hourly_on_flat_slots():
+    # each hourly price repeated 4x at dt=0,25 must reproduce the hourly solve
+    sell_h = [0.03] * 12 + [0.28] * 12
+    buy_h = [0.07] * 12 + [0.32] * 12
+    p = P()
+    r_h, _ = run(sell_h, buy_h)
+    sell_q = np.repeat(sell_h, 4)
+    buy_q = np.repeat(buy_h, 4)
+    z = np.zeros(96)
+    r_q = opt.plan(sell_q, buy_q, z, z, z, p.soc_min, p, 0.0, dt=0.25)
+    assert r_q["ok"]
+    assert r_q["objective"] == pytest.approx(r_h["objective"], abs=1e-3)
+    assert (r_q["d"].sum() * 0.25) == pytest.approx(r_h["d"].sum(), abs=1e-3)
+
+
+def test_dt_exploits_intra_hour_spike():
+    # one spike quarter inside an otherwise flat expensive hour: with just
+    # enough charge for one quarter's discharge, all of it goes to the spike
+    p = P()
+    sell = np.array([0.0] * 4 + [0.30, 0.10, 0.10, 0.10])
+    buy = np.array([0.50] * 4 + [0.34, 0.14, 0.14, 0.14])  # charging never pays
+    z = np.zeros(8)
+    eta = np.sqrt(p.rt)
+    soc0 = p.soc_min + 2.5 / eta   # exactly one quarter of 10 kW discharge
+    r = opt.plan(sell, buy, z, z, z, soc0, p, 0.0, dt=0.25)
+    assert r["ok"]
+    assert r["d"][4] == pytest.approx(10.0, abs=1e-3), "spike quarter not used"
+    assert r["d"][5:].max() < 1e-6, "discharged into flat quarters instead"

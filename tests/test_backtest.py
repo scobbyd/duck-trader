@@ -108,3 +108,23 @@ def test_planned_scenario_reconciles():
     assert np.allclose(soc, h.soc.values, atol=1e-6)
     # it actually traded into the evening peak
     assert h.d[local[np.isin(m.index, h.index)].hour >= 18].sum() > 5.0
+
+
+def test_executor_and_totals_at_quarter_dt():
+    m = synth_master()
+    # quarter-hourly frame: repeat each hour 4x on a 15-min index
+    q = m.reindex(pd.date_range(m.index.min(), m.index.max()
+                                + pd.Timedelta("45min"), freq="15min"),
+                  method="ffill")
+    p = P()
+    hz = q.index[:8]
+    planned = {"c": np.full(8, 10.0), "d": np.zeros(8)}
+    ex = backtest.execute_hours(q.loc[hz], planned, p, soc0=p.soc_min, dt=0.25)
+    eta = np.sqrt(p.rt)
+    # 8 quarters at 10 kW = 2 h x 10 kW x eta cell-side
+    assert ex["soc_end"] == pytest.approx(p.soc_min + 2 * 10 * eta, abs=1e-6)
+    h = backtest._frame(q.loc[hz], ex)
+    t = backtest._totals(h, p, dt=0.25)
+    # flat load 0,5 kW, no pv: import = load + charge, 2 h of energy
+    assert t["kwh_imp"] == pytest.approx((0.5 + 10.0) * 2, abs=1e-6)
+    assert t["cash_gross"] == pytest.approx(-(0.5 + 10.0) * 2 * 0.12, abs=1e-6)

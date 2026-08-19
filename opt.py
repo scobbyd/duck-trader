@@ -24,7 +24,7 @@ I = {name: i for i, name in enumerate(COLS)}
 
 
 def plan(sell, buy, load, pv_main, aux, soc0, p, lam_end, no_trade=False,
-         relax=False):
+         relax=False, dt=1.0):
     """relax=True is the standard LP relaxation of the binaries (z becomes
     continuous, which still implies c + d <= p_kw) — used only for the
     long-window B4 ceiling. Simultaneous charge+discharge can then appear
@@ -42,9 +42,9 @@ def plan(sell, buy, load, pv_main, aux, soc0, p, lam_end, no_trade=False,
 
     obj = np.zeros(n)
     for t in range(T):
-        obj[col(t, "exp")] = -sell[t]
-        obj[col(t, "imp")] = buy[t]
-        obj[col(t, "d")] = p.c_deg / eta
+        obj[col(t, "exp")] = -sell[t] * dt
+        obj[col(t, "imp")] = buy[t] * dt
+        obj[col(t, "d")] = p.c_deg / eta * dt
     obj[col(T - 1, "soc")] -= lam_end
 
     rows, cols, vals = [], [], []
@@ -59,8 +59,8 @@ def plan(sell, buy, load, pv_main, aux, soc0, p, lam_end, no_trade=False,
         add(t, "imp", 1.0), add(t, "exp", -1.0)
         add(t, "c", -1.0), add(t, "d", 1.0), add(t, "u", 1.0)
         lb.append(load[t] - aux[t]), ub.append(load[t] - aux[t]); r += 1
-        # SOC continuity
-        add(t, "soc", 1.0), add(t, "c", -eta), add(t, "d", 1.0 / eta)
+        # SOC continuity (energy per step = power x dt)
+        add(t, "soc", 1.0), add(t, "c", -eta * dt), add(t, "d", dt / eta)
         if t > 0:
             add(t - 1, "soc", -1.0)
         rhs = soc0 if t == 0 else 0.0
