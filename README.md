@@ -62,6 +62,9 @@ Home Assistant integration and dependencies: `docs/home-assistant.md`.
                     slot-ratio PV forecast from 24 h irradiance forecasts
     sched.py        13:00-local plan times, 36 h horizons, DST-safe
     backtest.py     executor (reactive guards) + baselines + accounting
+    ha/             Home Assistant reference wiring: solver bridge script
+                    + package YAML (daily solve, 30-min re-solve deadband
+                    loop, executor skeleton, guards)
     tests/          23 unit tests with hand-computed optima
 
 ## What you must bring
