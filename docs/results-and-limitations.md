@@ -12,23 +12,24 @@ round-trip figure). Wear is charged inside the optimizer at 0,50 EUR per
 equivalent full cycle and reported as a separate ledger.
 
 All totals below are at bare EPEX day-ahead prices (no supplier fees),
-rounded, with ratios preserved.
+on the market's native quarter-hour grid, rounded, with ratios
+preserved.
 
 | controller | EUR / 152 d | cycles |
 |---|---:|---:|
-| No battery | ~470 | 0 |
-| Greedy self-consumption | ~480 | ~14 |
+| No battery | ~465 | 0 |
+| Greedy self-consumption | ~475 | ~14 |
 | Commercial imbalance EMS (realized) | ~980 | n/a |
-| This algorithm | ~1.360 | ~170 |
-| Perfect load+PV foresight | ~1.370 | ~170 |
-| Omniscient full-window ceiling | ~1.420 | ~170 |
+| This algorithm | ~1.410 | ~190 |
+| Perfect load+PV foresight | ~1.430 | ~190 |
+| Omniscient full-window ceiling | ~1.480 | ~190 |
 
 ## The comparison that matters
 
 The same site, in the same window, was actually operated by a commercial
 EMS that trades the battery on the imbalance market; it realized roughly
 980 EUR (believed to be before supplier fees). The day-ahead algorithm
-backtests about 40% above that, from prices that are simply published
+backtests about 45% above that, from prices that are simply published
 every afternoon, with no real-time trading infrastructure and no
 imbalance exposure. Fair caveats in both directions: a backtest is not
 realized cash, the realized figure includes whatever co-dispatch the EMS
@@ -37,7 +38,8 @@ elsewhere in the year. Still, the gap says the boring market, played
 deliberately, is at least competitive with the exciting one.
 
 A related warning from the same data: passively settling day-ahead-
-optimal flows at imbalance prices loses about 30%. Day-ahead planning
+optimal flows at imbalance prices loses about 35% (measured at the
+settlement's own quarter-hour resolution). Day-ahead planning
 with imbalance settlement is the worst combination; match your dispatch
 basis to your settlement basis, or add a genuinely selective
 imbalance-aware layer.
@@ -47,11 +49,11 @@ imbalance-aware layer.
 Roughly speaking, over the window: pure price arbitrage a bit under
 half; harvesting solar that would otherwise be curtailed in
 negative-price windows about a third (curtailment loss drops from
-~2.100 kWh to ~450 kWh; on ~60 duck days the battery soaks ~30 kWh/day
+~2.300 kWh to ~600 kWh; on ~65 duck days the battery soaks ~30 kWh/day
 of surplus that the greedy controller wastes); the rest is timing of
 exports and load coverage. Winter, estimated with a prices-only bound
 over a full year, contributes maybe a quarter of what the duck months
-do; a raw annual figure around 1.750-1.900 EUR at ~410 cycles is a
+do; a raw annual figure around 1.800-1.950 EUR at ~430 cycles is a
 defensible extrapolation for this class of site.
 
 ## Limitations, honestly
@@ -64,10 +66,11 @@ defensible extrapolation for this class of site.
   are absent from both the site and the model (see below).
 - Season coverage. The backtest is duck season (spring/summer). Winter
   is estimated from a prices-only bound, not backtested.
-- Grid granularity, measured: a quarter-hourly re-run on the market's
-  native 15-minute products added about 3,5% raw at ~10% more cycling
-  (the planner supports both via its dt parameter). The headline table
-  above is the hourly run.
+- Grid granularity, measured: the headline table is the quarter-hourly
+  run on the market's native 15-minute products; plain hourly planning
+  lands about 3,5% lower at ~10% less cycling (the planner supports both
+  via its dt parameter). Load and PV are step-held hourly on the quarter
+  grid, so the granularity gain is price-side only.
 - Settlement basis. The backtest settles at day-ahead. If your supplier
   settles imbalance, see the warning above.
 - Potential-PV reconstruction. If your inverter curtails, its reported

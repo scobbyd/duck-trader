@@ -22,26 +22,27 @@ curtailed, discharge again into the evening peak.
 Backtested on a real Dutch household (about 4,5 MWh/yr consumption,
 roughly 20 kWp PV, 48 kWh LiFePO4 battery behind a 12 kW hybrid
 inverter, traded at 10 kW) over 152 days, mid-March through mid-August
-2026, at bare EPEX day-ahead prices. Numbers are rounded; ratios are
-accurate.
+2026, at bare EPEX day-ahead prices on the market's native quarter-hour
+grid. Numbers are rounded; ratios are accurate.
 
 | controller | result, EUR / 152 d |
 |---|---:|
-| No battery | ~470 |
-| Greedy self-consumption battery | ~480 |
+| No battery | ~465 |
+| Greedy self-consumption battery | ~475 |
 | Commercial imbalance-trading EMS (realized, same site and window) | ~980 |
-| This algorithm (causal backtest) | ~1.360 |
-| Same, with perfect load/solar foresight | ~1.370 |
-| Omniscient full-window ceiling | ~1.420 |
+| This algorithm (causal backtest) | ~1.410 |
+| Same, with perfect load/solar foresight | ~1.430 |
+| Omniscient full-window ceiling | ~1.480 |
 
-Battery wear is tracked as its own ledger (~85 EUR at 0,50 EUR per
-equivalent full cycle, ~170 cycles) rather than hidden in the totals.
+Battery wear is tracked as its own ledger (~95 EUR at 0,50 EUR per
+equivalent full cycle, ~190 cycles) rather than hidden in the totals.
 Three observations carry most of the insight:
 
 1. Self-consumption is nearly worthless at raw prices; all the value is
    in timing. The algorithm triples the site result.
 2. Forecast quality barely matters. Perfect knowledge of tomorrow's load
-   and solar is worth ~1% more. A 7-day moving average per hour of day
+   and solar is worth ~1,5% more, and perfect load knowledge alone is
+   worth nothing at all. A 7-day moving average per hour of day
    beat every weather-feature ML model tried, and the five candidate
    load models land within 1 EUR of each other. The prices, which are
    simply published, carry the signal.
