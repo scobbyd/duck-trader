@@ -64,10 +64,8 @@ defensible extrapolation for this class of site.
   are absent from both the site and the model (see below).
 - Season coverage. The backtest is duck season (spring/summer). Winter
   is estimated from a prices-only bound, not backtested.
-- Grid granularity, measured: a quarter-hourly re-run on the market's
-  native 15-minute products added about 3,5% raw at ~10% more cycling
-  (the planner supports both via its dt parameter). The headline table
-  above is the hourly run.
+- Hourly planning on what is now a 15-minute market. Quarter-hour
+  granularity would capture more spread; unquantified here.
 - Settlement basis. The backtest settles at day-ahead. If your supplier
   settles imbalance, see the warning above.
 - Potential-PV reconstruction. If your inverter curtails, its reported
@@ -79,9 +77,8 @@ defensible extrapolation for this class of site.
 - Degradation is a linear 0,50 EUR/cycle. Real aging is kinder to
   shallow cycles and unkinder to heat and high SOC parking; the number
   is a planning price, not a battery model.
-- The executor seam. This repo backtests; reference HA wiring (solver
-  bridge + package YAML with the re-solve deadband loop) ships in ha/,
-  but the inverter-register mapping itself remains yours.
+- The executor seam. This repo backtests; the inverter-writing layer is
+  sketched in docs/home-assistant.md but not shipped.
 
 ## Why an EV is the natural next addition
 

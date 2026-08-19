@@ -62,9 +62,6 @@ Home Assistant integration and dependencies: `docs/home-assistant.md`.
                     slot-ratio PV forecast from 24 h irradiance forecasts
     sched.py        13:00-local plan times, 36 h horizons, DST-safe
     backtest.py     executor (reactive guards) + baselines + accounting
-    ha/             Home Assistant reference wiring: solver bridge script
-                    + package YAML (daily solve, 30-min re-solve deadband
-                    loop, executor skeleton, guards)
     tests/          23 unit tests with hand-computed optima
 
 ## What you must bring
@@ -90,9 +87,5 @@ current state of charge in; hourly charge/discharge/curtailment plan out.
 
 ## License
 
-PolyForm Noncommercial 1.0.0: free to use, modify, and share for
-personal and any other noncommercial purpose; commercial use requires a
-separate license. As the license says, the software comes as is, without
-any warranty, and the licensor is not liable for any damages arising
-from its use — a battery is a large object that stores real energy, and
-an inverter register written wrong is your problem, not this repo's.
+MIT. No warranty; a battery is a large object that stores real energy,
+and an inverter register written wrong is your problem, not this repo's.
