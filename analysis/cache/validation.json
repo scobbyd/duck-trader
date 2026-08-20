@@ -1,0 +1,88 @@
+{
+  "engine_vs_dayahead_study": {
+    "window": [
+      "2025-08-15 11:00:00+00:00",
+      "2026-08-14 22:00:00+00:00"
+    ],
+    "net_after_wear_eur": 858.72,
+    "cash_eur": 965.79,
+    "efc": 214.1,
+    "reference_results_summary": {
+      "net": 858.27,
+      "efc": 214.0
+    },
+    "net_delta": 0.45,
+    "efc_delta": 0.1
+  },
+  "data_vs_sources_md": {
+    "2023": {
+      "rows": 35040,
+      "buy_mean": 103.4,
+      "sell_mean": 93.6,
+      "buy_min": -1549.47,
+      "sell_neg_pct": 19.5
+    },
+    "2024": {
+      "rows": 35136,
+      "buy_mean": 96.2,
+      "sell_mean": 66.2,
+      "buy_min": -1593.1,
+      "sell_neg_pct": 24.8
+    },
+    "2025": {
+      "rows": 35040,
+      "buy_mean": 94.7,
+      "sell_mean": 72.2,
+      "buy_min": -1310.43,
+      "sell_neg_pct": 18.5
+    },
+    "_reference_SOURCES_md": {
+      "2023": {
+        "rows": 35040,
+        "buy_mean": 103.4,
+        "sell_mean": 93.6,
+        "buy_min": -1549.47,
+        "sell_neg_pct": 19.5
+      },
+      "2024": {
+        "rows": 35136,
+        "buy_mean": 96.2,
+        "sell_mean": 66.2,
+        "buy_min": -1593.1,
+        "sell_neg_pct": 24.8
+      },
+      "2025": {
+        "rows": 35040,
+        "buy_mean": 94.7,
+        "sell_mean": 72.2,
+        "buy_min": -1310.43,
+        "sell_neg_pct": 18.5
+      }
+    },
+    "reg_state_counts": {
+      "-1": 48793,
+      "0": 6735,
+      "1": 44662,
+      "2": 26910
+    },
+    "_reference_reg_state": {
+      "-1": 48766,
+      "0": 6735,
+      "1": 44616,
+      "2": 26887,
+      "note": "SOURCES.md ran to 2026-08-15; this set runs one day longer"
+    },
+    "buy_lt_sell_rows": [
+      "2023-01-26 12:45:00+00:00",
+      "2023-01-26 14:00:00+00:00",
+      "2023-01-26 18:15:00+00:00",
+      "2024-06-08 14:30:00+00:00"
+    ]
+  },
+  "arithmetic": {
+    "cash_eur": 1175.63,
+    "eur_per_day_x_days": 1175.63,
+    "delta": 0.0,
+    "efc_vs_export": 0.0
+  }
+}

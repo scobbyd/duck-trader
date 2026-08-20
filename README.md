@@ -52,6 +52,30 @@ Three observations carry most of the insight:
 
 Full results, limitations, and the EV roadmap: `docs/results-and-limitations.md`.
 Home Assistant integration and dependencies: `docs/home-assistant.md`.
+Why day-ahead beat the imbalance market: `docs/imbalance-market-character.md`.
+
+## Why not trade the imbalance market instead?
+
+Most Dutch home batteries that are traded at all are traded on the imbalance
+(onbalans) market by a supplier-side EMS, so the obvious question is why this
+algorithm targets day-ahead. `docs/imbalance-market-character.md` answers it
+with four years of settled TenneT imbalance prices against NL day-ahead,
+2023-2026.
+
+The short version: the two markets crossed over during 2025. A causal reactive
+imbalance rule earned 1,51x what a causal day-ahead plan earned in 2023 and
+0,69x in 2026, on the same battery. The imbalance market's capturable spread
+fell about 42% from its 2024 peak while day-ahead's rose about 43%, and the
+imbalance-to-day-ahead spread ratio went 5,16 -> 2,02. Two dated structural
+events carry most of it: PICASSO cross-border aFRR exchange going live in
+October 2024, and the NL day-ahead market switching to a 15-minute market time
+unit on 1 October 2025, which moved intra-hour volatility out of imbalance and
+into a market where it is published a day ahead. Meanwhile dual-priced
+settlement quarters went from 7,7% to 40,0%, taxing every cycle.
+
+The analysis lives in `analysis/`, reuses this repo's planner unmodified, and
+re-runs offline in about a minute from the gzipped price panels in
+`analysis/cache/`.
 
 ## What is in here
 

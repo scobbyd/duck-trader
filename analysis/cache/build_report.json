@@ -1,0 +1,37 @@
+{
+  "cache_days": 1324,
+  "bad_json_lines": 0,
+  "parse_failures": [],
+  "isp_rows": 127100,
+  "isp_range": [
+    "2022-12-31T23:00:00+00:00",
+    "2026-08-16T21:45:00+00:00"
+  ],
+  "isp_gaps": 0,
+  "buy_ge_sell_pct": 99.9969,
+  "reg_state_counts": {
+    "-1": 48793,
+    "1": 44662,
+    "2": 26910,
+    "0": 6735
+  },
+  "per_year_rows": {
+    "2022": 4,
+    "2023": 35040,
+    "2024": 35136,
+    "2025": 35040,
+    "2026": 21880
+  },
+  "da_hourly_source": "da_prices_multiyear.csv",
+  "da_hourly_rows": 31775,
+  "da_hourly_range": [
+    "2022-12-31T23:00:00+00:00",
+    "2026-08-16T21:00:00+00:00"
+  ],
+  "da_q15_source": "da_q15_multiyear.csv",
+  "da_q15_rows": 54815,
+  "da_q15_range": [
+    "2022-12-31T23:00:00+00:00",
+    "2026-08-16T21:45:00+00:00"
+  ]
+}
