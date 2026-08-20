@@ -52,7 +52,8 @@ Three observations carry most of the insight:
 
 Full results, limitations, and the EV roadmap: `docs/results-and-limitations.md`.
 Home Assistant integration and dependencies: `docs/home-assistant.md`.
-Why day-ahead beat the imbalance market: `docs/imbalance-market-character.md`.
+Why day-ahead beat the imbalance market: `docs/imbalance-market-character.md`,
+also typeset as a formal report in `docs/imbalance-market-character.pdf`.
 
 ## Why not trade the imbalance market instead?
 
