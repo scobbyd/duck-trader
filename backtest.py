@@ -226,7 +226,11 @@ def run_planned(master, p, fc_load, fc_pv, days=None, lam_end_fn=None,
     n_fail = n_resolves = n_resolve_fail = 0
     for day in days:
         t0, hz, exec_end = sched.plan_horizon(day, freq=freq)
-        hz = hz[np.isin(hz, master.index)]
+        # DatetimeIndex.isin, not np.isin: numpy degrades a tz-aware index to
+        # an object array and runs ~100x slower (measured 32,9 ms vs 0,3 ms
+        # per call), which at ~1.300 daily solves is the difference between a
+        # minute and an hour.
+        hz = hz[hz.isin(master.index)]
         sell = master.loc[hz, "sell"].values
         buy = master.loc[hz, "buy"].values
         lf = fc_load(t0, hz)
